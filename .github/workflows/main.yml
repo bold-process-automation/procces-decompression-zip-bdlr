@@ -28,4 +28,5 @@ jobs:
       - name: 4. Ejecutar el script de procesamiento
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          ID_ARCHIVO_DRIVE: ${{ github.event.inputs.file_id }}
         run: python main.py
