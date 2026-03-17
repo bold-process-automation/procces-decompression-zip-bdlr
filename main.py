@@ -3,8 +3,14 @@ import csv
 import zipfile
 import subprocess
 import os
+import json
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 
-# Encabezados oficiales segun el tipo de archivo
+# CONFIGURACIÓN: ID de tu carpeta de destino en Drive
+FOLDER_ID_SALIDA = "1WK0HaCeEtTuOOPgJbT1mtGA-uJPAJTsQ"
+
 _HEADERS = {
     "BREB100": [
         "MOL_ID", "TRANSACTION_ID", "TRANSACTION_DATE", "TRANSACTION_MOL_DATE",
@@ -19,76 +25,84 @@ _HEADERS = {
     ]
 }
 
-def procesar_archivo_p7z(contenido_p7z, nombre_p7z):
-    """
-    Realiza el proceso nuclear: remocion de firma P7Z, descompresion de ZIP interno
-    y conversion del TXT resultante a formato CSV.
-    """
+def autenticar_drive():
+    """Autenticación para GitHub Actions usando variables de entorno."""
     try:
-        # 1. Remocion de firma PKCS7 usando OpenSSL
+        # GitHub Actions inyecta el secreto en os.environ
+        creds_raw = os.environ.get('GCP_SA_KEY')
+        
+        if not creds_raw:
+            print("Error: No se encontró la variable de entorno GCP_SA_KEY.")
+            return None
+
+        creds_json = json.loads(creds_raw)
+        creds = service_account.Credentials.from_service_account_info(creds_json)
+        return build('drive', 'v3', credentials=creds)
+    except Exception as e:
+        print(f"Error de autenticación: {e}")
+        return None
+
+def subir_a_drive(service, nombre_archivo, contenido_string):
+    """Sube el CSV directamente a la carpeta de Drive."""
+    try:
+        fh = io.BytesIO(contenido_string.encode('utf-8'))
+        metadata = {'name': nombre_archivo, 'parents': [FOLDER_ID_SALIDA]}
+        media = MediaIoBaseUpload(fh, mimetype='text/csv', resumable=True)
+        
+        file = service.files().create(
+            body=metadata,
+            media_body=media,
+            fields='id',
+            supportsAllDrives=True
+        ).execute()
+        print(f"Éxito: {nombre_archivo} subido (ID: {file.get('id')})")
+    except Exception as e:
+        print(f"Error al subir a Drive: {e}")
+
+def procesar_p7z(contenido_p7z, nombre_p7z, service):
+    """Lógica de desencriptación (OpenSSL) y transformación."""
+    try:
         comando = ["openssl", "smime", "-verify", "-inform", "DER", "-noverify"]
         proceso = subprocess.run(comando, input=contenido_p7z, capture_output=True, check=True)
-        datos_zip_interno = proceso.stdout
         
-        # 2. Apertura de ZIP interno y extraccion de TXT
-        with zipfile.ZipFile(io.BytesIO(datos_zip_interno), 'r') as z_interno:
-            nombre_txt = next((n for n in z_interno.namelist() if n.endswith('.txt')), None)
-            if not nombre_txt:
-                print(f"Error: No se encontro TXT dentro de {nombre_p7z}")
-                return
-            
-            with z_interno.open(nombre_txt) as f_txt:
-                texto_plano = f_txt.read().decode('utf-8')
+        with zipfile.ZipFile(io.BytesIO(proceso.stdout), 'r') as z:
+            nombre_txt = next((n for n in z.namelist() if n.endswith('.txt')), None)
+            if not nombre_txt: return
+            texto = z.read(nombre_txt).decode('utf-8')
 
-        # 3. Mapeo de encabezados y transformacion a CSV
         tipo = "BREB100" if "BREB100" in nombre_txt else "BREB101"
-        headers_actuales = _HEADERS[tipo]
-        
-        output_csv = io.StringIO()
-        writer = csv.DictWriter(output_csv, fieldnames=headers_actuales, delimiter=';', quoting=csv.QUOTE_ALL)
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=_HEADERS[tipo], delimiter=';', quoting=csv.QUOTE_ALL)
         writer.writeheader()
         
-        reader = csv.DictReader(io.StringIO(texto_plano), fieldnames=headers_actuales, delimiter=';')
-        filas = 0
+        reader = csv.DictReader(io.StringIO(texto), fieldnames=_HEADERS[tipo], delimiter=';')
         for row in reader:
             writer.writerow(row)
-            filas += 1
 
-        # 4. Escritura de archivo CSV final
-        nombre_final = nombre_txt.replace(".txt", ".csv")
-        with open(nombre_final, "w", encoding="utf-8") as f_out:
-            f_out.write(output_csv.getvalue())
-        
-        print(f"Procesado: {nombre_p7z} -> Generado: {nombre_final} | Filas: {filas}")
-
+        subir_a_drive(service, nombre_txt.replace(".txt", ".csv"), output.getvalue())
     except Exception as e:
-        print(f"Error procesando {nombre_p7z}: {str(e)}")
+        print(f"Error procesando {nombre_p7z}: {e}")
 
-def validador_entrada_flexible(ruta_archivo):
-    """
-    Valida la extension de entrada. Si es ZIP, itera sus archivos P7Z.
-    Si es P7Z, lo procesa directamente.
-    """
-    if not os.path.exists(ruta_archivo):
-        print(f"Error: El archivo {ruta_archivo} no existe.")
+def ejecutar_proceso_completo():
+    service = autenticar_drive()
+    if not service: return
+
+    # Escanea la carpeta raíz buscando archivos para procesar automáticamente
+    archivos = [f for f in os.listdir('.') if f.lower().endswith(('.zip', '.p7z'))]
+    
+    if not archivos:
+        print("No se encontraron archivos .zip o .p7z para procesar.")
         return
 
-    extension = ruta_archivo.lower()
+    for archivo_entrada in archivos:
+        print(f"Procesando archivo: {archivo_entrada}")
+        if archivo_entrada.lower().endswith('.zip'):
+            with zipfile.ZipFile(archivo_entrada, 'r') as z:
+                for p7z in [f for f in z.namelist() if f.endswith('.p7z')]:
+                    procesar_p7z(z.read(p7z), p7z, service)
+        elif archivo_entrada.lower().endswith('.p7z'):
+            with open(archivo_entrada, 'rb') as f:
+                procesar_p7z(f.read(), archivo_entrada, service)
 
-    # Caso 1: Archivo ZIP maestro
-    if extension.endswith('.zip'):
-        print(f"Detectado archivo ZIP maestro: {ruta_archivo}")
-        with zipfile.ZipFile(ruta_archivo, 'r') as z_maestro:
-            archivos_p7z = [f for f in z_maestro.namelist() if f.endswith('.p7z')]
-            for nombre_p7z in archivos_p7z:
-                with z_maestro.open(nombre_p7z) as f_p7z:
-                    procesar_archivo_p7z(f_p7z.read(), nombre_p7z)
-
-    # Caso 2: Archivo P7Z individual
-    elif extension.endswith('.p7z'):
-        print(f"Detectado archivo P7Z individual: {ruta_archivo}")
-        with open(ruta_archivo, 'rb') as f_p7z:
-            procesar_archivo_p7z(f_p7z.read(), ruta_archivo)
-
-    else:
-        print("Error: Extension no soportada (use .zip o .p7z).")
+if __name__ == "__main__":
+    ejecutar_proceso_completo()
