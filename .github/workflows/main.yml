@@ -1,0 +1,35 @@
+name: Procesar Reporte Banrep
+
+on:
+  # Permite la ejecución manual desde la pestaña "Actions"
+  workflow_dispatch:
+  # Opcional: Ejecutar automáticamente si subes un archivo a una carpeta específica
+  # push:
+  #   paths:
+  #     - 'entradas/**'
+
+jobs:
+  ejecutar-proceso:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Descargar el código del repositorio
+        uses: actions/checkout@v3
+
+      - name: 2. Configurar el entorno de Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: 3. Instalar dependencias
+        run: |
+          pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
+          # Nota: OpenSSL ya viene preinstalado en las máquinas virtuales de GitHub (Ubuntu)
+
+      - name: 4. Ejecutar el script de procesamiento
+        env:
+          # Mapeo de Secretos:
+          # El nombre a la izquierda (GCP_SA_KEY) es el que busca el código Python
+          # El nombre a la derecha (CTDA_DRIVE_KEY) es el que configuraste en GitHub Secrets
+          GCP_SA_KEY: ${{ secrets.CTDA_DRIVE_KEY }}
+        run: python main.py
