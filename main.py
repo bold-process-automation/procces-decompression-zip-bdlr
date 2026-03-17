@@ -92,8 +92,3 @@ def validador_entrada_flexible(ruta_archivo):
 
     else:
         print("Error: Extension no soportada (use .zip o .p7z).")
-
-# --- Ejecucion ---
-# Funciona tanto con el ZIP maestro como con un P7Z suelto
-archivo_input = "nombre_de_tu_archivo.zip" # O "archivo.p7z"
-validador_entrada_flexible(archivo_input)
