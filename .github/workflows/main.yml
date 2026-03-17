@@ -24,12 +24,8 @@ jobs:
       - name: 3. Instalar dependencias
         run: |
           pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
-          # Nota: OpenSSL ya viene preinstalado en las máquinas virtuales de GitHub (Ubuntu)
 
       - name: 4. Ejecutar el script de procesamiento
         env:
-          # Mapeo de Secretos:
-          # El nombre a la izquierda (GCP_SA_KEY) es el que busca el código Python
-          # El nombre a la derecha (CTDA_DRIVE_KEY) es el que configuraste en GitHub Secrets
-          GCP_SA_KEY: ${{ secrets.CTDA_DRIVE_KEY }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: python main.py
