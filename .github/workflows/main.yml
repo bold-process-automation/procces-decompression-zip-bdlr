@@ -25,7 +25,6 @@ jobs:
 
       - name: 4. Ejecutar el script
         env:
-          GCP_SA_KEY: ${{ secrets.CTDA_DRIVE_KEY }}
-          # ESTA LÍNEA PASA EL INPUT DEL ENDPOINT AL CÓDIGO PYTHON
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY}}
           ID_ARCHIVO_DRIVE: ${{ github.event.inputs.file_id }}
         run: python main.py
