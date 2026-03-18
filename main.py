@@ -4,11 +4,14 @@ import zipfile
 import subprocess
 import os
 import json
+import sys
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
-
+# ==========================================
+# CONFIGURACIÓN
+# ==========================================
 FOLDER_ID_ENTRADA = "1LJmpM8D60I5OczdmVwHGgFoWWfH4FhfC"
 FOLDER_ID_SALIDA = "1WK0HaCeEtTuOOPgJbT1mtGA-uJPAJTsQ"
 
@@ -17,10 +20,13 @@ _HEADERS = {
     "BREB101": ["TRANSACTION_DATE", "TRANSACTION_ID", "TRANSACTION_STATUS", "TRANSACTION_STATUS_CODE", "TRANSACTION_DETAIL", "TRANSACTION_TYPE", "TRANSACTION_AMOUNT"]
 }
 
+# Variable global para rastrear el exito total del proceso
+HUBO_ERRORES = False
+
 def autenticar_drive():
     """Configura la conexión con Google Drive usando Service Account."""
     try:
-        # Intento de lectura desde variables de entorno o entorno Colab
+        # Prioridad 1: GitHub Secrets / Prioridad 2: Colab Userdata
         creds_raw = os.environ.get('GCP_SA_KEY')
         if not creds_raw:
             try:
@@ -60,6 +66,7 @@ def descargar_archivo(service, file_id):
 
 def procesar_y_subir(contenido_binario, nombre_archivo, service):
     """Desencripta mediante OpenSSL, extrae TXT y sube resultado como CSV."""
+    global HUBO_ERRORES
     try:
         # Paso 1: Desencriptacion PKCS7
         print(f"Desencriptando {nombre_archivo}...")
@@ -73,6 +80,7 @@ def procesar_y_subir(contenido_binario, nombre_archivo, service):
             nombre_txt = next((n for n in z.namelist() if n.endswith('.txt')), None)
             if not nombre_txt:
                 print(f"Aviso: No se encontro archivo .txt dentro de {nombre_archivo}")
+                HUBO_ERRORES = True
                 return
             texto = z.read(nombre_txt).decode('utf-8')
 
@@ -97,6 +105,7 @@ def procesar_y_subir(contenido_binario, nombre_archivo, service):
 
     except Exception as e:
         print(f"Error procesando {nombre_archivo}: {e}")
+        HUBO_ERRORES = True
 
 if __name__ == "__main__":
     drive_service = autenticar_drive()
@@ -113,6 +122,9 @@ if __name__ == "__main__":
         
         archivos = results.get('files', [])
         print(f"Archivos encontrados: {len(archivos)}")
+
+        if not archivos:
+            print("No hay archivos nuevos para procesar.")
 
         for file in archivos:
             # Validacion para omitir carpetas y archivos previamente procesados
@@ -131,6 +143,8 @@ if __name__ == "__main__":
                         # Procesamiento de archivos P7Z contenidos dentro de un ZIP
                         with zipfile.ZipFile(io.BytesIO(binario), 'r') as z_master:
                             archivos_p7z = [f for f in z_master.namelist() if f.endswith('.p7z')]
+                            if not archivos_p7z:
+                                print(f"No se encontraron archivos .p7z dentro de {nombre}")
                             for p7z in archivos_p7z:
                                 procesar_y_subir(z_master.read(p7z), p7z, drive_service)
                     except Exception:
@@ -141,3 +155,14 @@ if __name__ == "__main__":
                     procesar_y_subir(binario, nombre, drive_service)
 
         print("Proceso finalizado.")
+        
+        # Reporte de estado para GitHub Actions
+        if HUBO_ERRORES:
+            print("El proceso termino con errores en uno o mas archivos.")
+            sys.exit(1)
+        else:
+            print("El proceso completo fue exitoso.")
+            sys.exit(0)
+    else:
+        # Error en la autenticacion inicial
+        sys.exit(1)
