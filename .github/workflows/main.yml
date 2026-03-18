@@ -2,10 +2,13 @@ name: Procesar Reporte Banrep
 
 on:
   workflow_dispatch:
-    # AQUÍ ES DONDE DEFINES QUE EL ENDPOINT PUEDE RECIBIR EL FILE_ID
     inputs:
       file_id:
         description: 'ID del archivo enviado desde n8n'
+        required: true
+      # ESTE ES EL NUEVO INPUT PARA LA URL DINÁMICA
+      webhook_url:
+        description: 'URL dinámica de n8n para responder (resumeUrl)'
         required: true
 
 jobs:
@@ -20,25 +23,38 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: 3. Instalar dependencias
-        run: pip install google-api-python-client google-auth
+      - name: 3. Instalar dependencias y OpenSSL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssl
+          pip install google-api-python-client google-auth
 
       - name: 4. Ejecutar el script
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           ID_ARCHIVO_DRIVE: ${{ github.event.inputs.file_id }}
         run: python main.py
-     
-      - name: Notificar exito a n8n
+      
+      # NOTIFICAR ÉXITO USANDO LA URL DINÁMICA
+      - name: Reportar Exito a n8n
         if: success()
         run: |
-          curl -X POST https://boldco.app.n8n.cloud/webhook/confirmacion-github \
+          curl -X POST ${{ github.event.inputs.webhook_url }} \
           -H "Content-Type: application/json" \
-          -d '{"status": "completado", "archivo": "${{ github.event.inputs.file_id }}"}'
+          -d '{
+            "status": "success", 
+            "message": "Transformacion exitosa. El archivo ya esta en la carpeta de salida.",
+            "file_id": "${{ github.event.inputs.file_id }}"
+          }'
 
-      - name: Notificar error a n8n
+      # NOTIFICAR ERROR USANDO LA URL DINÁMICA
+      - name: Reportar Fallo a n8n
         if: failure()
         run: |
-          curl -X POST https://boldco.app.n8n.cloud/webhook/confirmacion-github \
+          curl -X POST ${{ github.event.inputs.webhook_url }} \
           -H "Content-Type: application/json" \
-          -d '{"status": "error", "archivo": "${{ github.event.inputs.file_id }}"}'
+          -d '{
+            "status": "error", 
+            "message": "Fallo tecnico en el procesamiento. Revisar logs de GitHub Actions.",
+            "file_id": "${{ github.event.inputs.file_id }}"
+          }'
