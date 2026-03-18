@@ -9,7 +9,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
 # --- CONFIGURACIÓN DE CARPETAS ---
-FOLDER_ID_ENTRADA = "1TB8fPJkli8-Qzke28VAugn2EyqQFGxmE" # Donde n8n deja los archivos
+FOLDER_ID_ENTRADA = "1LJmpM8D60I5OczdmVwHGgFoWWfH4FhfC" # Donde n8n deja los archivos
 FOLDER_ID_SALIDA = "1WK0HaCeEtTuOOPgJbT1mtGA-uJPAJTsQ"  # Donde quieres los CSVs
 
 _HEADERS = {
