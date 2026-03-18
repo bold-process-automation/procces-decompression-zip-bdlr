@@ -8,9 +8,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
-# ==========================================
-# CONFIGURACIÓN DE CARPETAS Y ENCABEZADOS
-# ==========================================
+
 FOLDER_ID_ENTRADA = "1LJmpM8D60I5OczdmVwHGgFoWWfH4FhfC"
 FOLDER_ID_SALIDA = "1WK0HaCeEtTuOOPgJbT1mtGA-uJPAJTsQ"
 
