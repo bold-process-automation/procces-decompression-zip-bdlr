@@ -28,3 +28,17 @@ jobs:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           ID_ARCHIVO_DRIVE: ${{ github.event.inputs.file_id }}
         run: python main.py
+     
+      - name: Notificar exito a n8n
+        if: success() # Solo corre si el script de Python NO fallo
+        run: |
+          curl -X POST https://tu-n8n.com/webhook/confirmacion-github \
+          -H "Content-Type: application/json" \
+          -d '{"status": "completado", "archivo": "${{ github.event.inputs.file_id }}"}'
+
+      - name: Notificar error a n8n
+        if: failure() # Solo corre si el script de Python tuvo un error
+        run: |
+          curl -X POST https://tu-n8n.com/webhook/confirmacion-github \
+          -H "Content-Type: application/json" \
+          -d '{"status": "error", "archivo": "${{ github.event.inputs.file_id }}"}'
