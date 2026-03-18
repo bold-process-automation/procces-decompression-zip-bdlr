@@ -9,7 +9,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
 # ==========================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN DE CARPETAS Y ENCABEZADOS
 # ==========================================
 FOLDER_ID_ENTRADA = "1LJmpM8D60I5OczdmVwHGgFoWWfH4FhfC"
 FOLDER_ID_SALIDA = "1WK0HaCeEtTuOOPgJbT1mtGA-uJPAJTsQ"
@@ -20,29 +20,30 @@ _HEADERS = {
 }
 
 def autenticar_drive():
+    """Configura la conexión con Google Drive usando Service Account."""
     try:
-        # Prioridad 1: GitHub Secrets / Prioridad 2: Colab Userdata
+        # Intento de lectura desde variables de entorno o entorno Colab
         creds_raw = os.environ.get('GCP_SA_KEY')
         if not creds_raw:
             try:
                 from google.colab import userdata
                 creds_raw = userdata.get('GCP_SA_KEY')
-            except:
+            except ImportError:
                 pass
 
         if not creds_raw:
-            print("❌ Error: No se encontró la credencial GCP_SA_KEY.")
+            print("Error: No se encontro la credencial GCP_SA_KEY.")
             return None
 
         creds_json = json.loads(creds_raw)
         creds = service_account.Credentials.from_service_account_info(creds_json)
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        print(f"❌ Error de autenticación: {e}")
+        print(f"Error de autenticacion: {e}")
         return None
 
 def descargar_archivo(service, file_id):
-    """Descarga los bytes del archivo desde Drive."""
+    """Obtiene el contenido binario de un archivo especifico en Drive."""
     try:
         file_metadata = service.files().get(fileId=file_id, supportsAllDrives=True).execute()
         nombre = file_metadata['name']
@@ -56,26 +57,29 @@ def descargar_archivo(service, file_id):
         
         return fh.getvalue(), nombre
     except Exception as e:
-        print(f"❌ Error descargando {file_id}: {e}")
+        print(f"Error descargando {file_id}: {e}")
         return None, None
 
 def procesar_y_subir(contenido_binario, nombre_archivo, service):
-    """Lógica original: OpenSSL -> ZIP -> CSV -> Drive."""
+    """Desencripta mediante OpenSSL, extrae TXT y sube resultado como CSV."""
     try:
-        print(f"🔓 Desencriptando {nombre_archivo}...")
+        # Paso 1: Desencriptacion PKCS7
+        print(f"Desencriptando {nombre_archivo}...")
         proceso = subprocess.run(
             ["openssl", "smime", "-verify", "-inform", "DER", "-noverify"],
             input=contenido_binario, capture_output=True, check=True
         )
 
+        # Paso 2: Procesamiento del contenido ZIP interno
         with zipfile.ZipFile(io.BytesIO(proceso.stdout), 'r') as z:
             nombre_txt = next((n for n in z.namelist() if n.endswith('.txt')), None)
             if not nombre_txt:
-                print(f"⚠️ No se encontró archivo .txt dentro de {nombre_archivo}")
+                print(f"Aviso: No se encontro archivo .txt dentro de {nombre_archivo}")
                 return
             texto = z.read(nombre_txt).decode('utf-8')
 
-        print(f"📊 Transformando {nombre_txt}...")
+        # Paso 3: Conversion de formato TXT a CSV
+        print(f"Transformando {nombre_txt}...")
         tipo = "BREB100" if "BREB100" in nombre_txt else "BREB101"
         output_csv = io.StringIO()
         writer = csv.DictWriter(output_csv, fieldnames=_HEADERS[tipo], delimiter=';', quoting=csv.QUOTE_ALL)
@@ -84,22 +88,23 @@ def procesar_y_subir(contenido_binario, nombre_archivo, service):
         for row in reader:
             writer.writerow(row)
 
+        # Paso 4: Carga del resultado a la carpeta de salida en Drive
         nombre_final = nombre_txt.replace(".txt", ".csv")
         fh_upload = io.BytesIO(output_csv.getvalue().encode('utf-8'))
         metadata = {'name': f"PROCESADO_{nombre_final}", 'parents': [FOLDER_ID_SALIDA]}
         media = MediaIoBaseUpload(fh_upload, mimetype='text/csv')
         
         service.files().create(body=metadata, media_body=media, supportsAllDrives=True).execute()
-        print(f"✅ Éxito: {nombre_final} subido a Drive.")
+        print(f"Exito: {nombre_final} subido a Drive.")
 
     except Exception as e:
-        print(f"❌ Error procesando {nombre_archivo}: {e}")
+        print(f"Error procesando {nombre_archivo}: {e}")
 
 if __name__ == "__main__":
     drive_service = autenticar_drive()
     
     if drive_service:
-        # LISTAR ARCHIVOS DE LA CARPETA DE ENTRADA
+        # Obtencion de la lista de archivos disponibles en la carpeta de entrada
         query = f"'{FOLDER_ID_ENTRADA}' in parents and trashed = false"
         results = drive_service.files().list(
             q=query, 
@@ -109,32 +114,32 @@ if __name__ == "__main__":
         ).execute()
         
         archivos = results.get('files', [])
-        print(f"📂 Archivos encontrados: {len(archivos)}")
+        print(f"Archivos encontrados: {len(archivos)}")
 
         for file in archivos:
-            # Filtro: No procesar carpetas ni archivos ya marcados como PROCESADO
+            # Validacion para omitir carpetas y archivos previamente procesados
             if file['mimeType'] == 'application/vnd.google-apps.folder' or "PROCESADO" in file['name']:
                 continue
             
-            print(f"--- Iniciando con: {file['name']} ---")
+            print(f"--- Iniciando procesamiento: {file['name']} ---")
             binario, nombre = descargar_archivo(drive_service, file['id'])
             
             if binario:
-                # Caso ZIP: Entrar y buscar P7Z (como estaba en tu código)
-                # También incluimos la lógica de MimeType por si el archivo no tiene extensión .zip
+                # Verificacion de tipo de archivo (por extension o MimeType)
                 is_zip = nombre.lower().endswith('.zip') or file['mimeType'] == 'application/zip'
                 
                 if is_zip:
                     try:
+                        # Procesamiento de archivos P7Z contenidos dentro de un ZIP
                         with zipfile.ZipFile(io.BytesIO(binario), 'r') as z_master:
                             archivos_p7z = [f for f in z_master.namelist() if f.endswith('.p7z')]
                             for p7z in archivos_p7z:
                                 procesar_y_subir(z_master.read(p7z), p7z, drive_service)
-                    except Exception as e:
-                        # Si falla como ZIP, intentamos procesarlo como P7Z directo por si acaso
+                    except Exception:
+                        # Intento de procesamiento directo si la descompresion falla
                         procesar_y_subir(binario, nombre, drive_service)
                 else:
-                    # Caso P7Z directo
+                    # Procesamiento directo para archivos P7Z individuales
                     procesar_y_subir(binario, nombre, drive_service)
 
-        print("🏁 Proceso finalizado.")
+        print("Proceso finalizado.")
