@@ -9,9 +9,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
-# ==========================================
 # CONFIGURACIÓN
-# ==========================================
+
 FOLDER_ID_ENTRADA = "1LJmpM8D60I5OczdmVwHGgFoWWfH4FhfC"
 FOLDER_ID_SALIDA = "1WK0HaCeEtTuOOPgJbT1mtGA-uJPAJTsQ"
 
@@ -97,7 +96,7 @@ def procesar_y_subir(contenido_binario, nombre_archivo, service):
         # Paso 4: Carga del resultado a la carpeta de salida en Drive
         nombre_final = nombre_txt.replace(".txt", ".csv")
         fh_upload = io.BytesIO(output_csv.getvalue().encode('utf-8'))
-        metadata = {'name': f"PROCESADO_{nombre_final}", 'parents': [FOLDER_ID_SALIDA]}
+        metadata = {'name': f"{nombre_final}", 'parents': [FOLDER_ID_SALIDA]}
         media = MediaIoBaseUpload(fh_upload, mimetype='text/csv')
         
         service.files().create(body=metadata, media_body=media, supportsAllDrives=True).execute()
