@@ -13,6 +13,7 @@ from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
 FOLDER_ID_ENTRADA = "1iPHBJWxr2ZmT0_Whdw-eCuJRgsc9MIQz"
 FOLDER_ID_SALIDA = "13B0A4iQ7jJU_ep0iESyJKyeSfAPYrx-6"
+FOLDER_ID_RESPALDO= "1KqUNC3xKFwVrnRLofe7xqTTiKMeXL6gj"
 
 _HEADERS = {
     "BREB100": ["MOL_ID", "TRANSACTION_ID", "TRANSACTION_DATE", "TRANSACTION_MOL_DATE", "TRANSACTION_CREATION_DATE", "TRANSACTION_AMOUNT", "AUTHORIZER_PROVIDER", "NIT_AUTHORIZER_PROVIDER", "RECEIVER_PROVIDER", "NIT_RECEIVER_PROVIDER", "TRANSACTION_STATUS", "TRANSACTION_STATUS_CODE", "TRANSACTION_ERROR_CODE"],
@@ -98,6 +99,11 @@ def procesar_y_subir(contenido_binario, nombre_archivo, service):
         fh_upload = io.BytesIO(output_csv.getvalue().encode('utf-8'))
         metadata = {'name': f"{nombre_final}", 'parents': [FOLDER_ID_SALIDA]}
         media = MediaIoBaseUpload(fh_upload, mimetype='text/csv')
+
+        metadata_2 = {'name': f"{nombre_final}", 'parents': [FOLDER_ID_RESPALDO]}
+        media_2 = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv')
+        service.files().create(body=metadata_2, media_body=media_2, supportsAllDrives=True).execute()
+        print(f"Exito: {nombre_final} subido a Respaldo.")
         
         service.files().create(body=metadata, media_body=media, supportsAllDrives=True).execute()
         print(f"Exito: {nombre_final} subido a Drive.")
