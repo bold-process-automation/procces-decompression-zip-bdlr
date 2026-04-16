@@ -101,7 +101,7 @@ def procesar_y_subir(contenido_binario, nombre_archivo, service):
         media = MediaIoBaseUpload(fh_upload, mimetype='text/csv')
 
         metadata_2 = {'name': f"{nombre_final}", 'parents': [FOLDER_ID_RESPALDO]}
-        media_2 = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv')
+        media_2 = MediaIoBaseUpload(io.BytesIO(output_csv.getvalue().encode('utf-8'))
         service.files().create(body=metadata_2, media_body=media_2, supportsAllDrives=True).execute()
         print(f"Exito: {nombre_final} subido a Respaldo.")
         
