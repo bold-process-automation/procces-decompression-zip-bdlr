@@ -6,7 +6,6 @@ on:
       file_id:
         description: 'ID del archivo enviado desde n8n'
         required: true
-      # ESTE ES EL NUEVO INPUT PARA LA URL DINÁMICA
       webhook_url:
         description: 'URL dinámica de n8n para responder (resumeUrl)'
         required: true
@@ -16,12 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 1. Descargar el código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 2. Configurar Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
+          check-latest: true
 
       - name: 3. Instalar dependencias y OpenSSL
         run: |
@@ -34,27 +34,33 @@ jobs:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           ID_ARCHIVO_DRIVE: ${{ github.event.inputs.file_id }}
         run: python main.py
-      
+
       # NOTIFICAR ÉXITO USANDO LA URL DINÁMICA
       - name: Reportar Exito a n8n
         if: success()
+        env:
+          WEBHOOK_URL: ${{ github.event.inputs.webhook_url }}
+          FILE_ID: ${{ github.event.inputs.file_id }}
         run: |
-          curl -X POST ${{ github.event.inputs.webhook_url }} \
+          curl -X POST "$WEBHOOK_URL" \
           -H "Content-Type: application/json" \
           -d '{
             "status": "success", 
             "message": "Transformacion exitosa. El archivo ya esta en la carpeta de salida.",
-            "file_id": "${{ github.event.inputs.file_id }}"
+            "file_id": "'"$FILE_ID"'"
           }'
 
       # NOTIFICAR ERROR USANDO LA URL DINÁMICA
       - name: Reportar Fallo a n8n
         if: failure()
+        env:
+          WEBHOOK_URL: ${{ github.event.inputs.webhook_url }}
+          FILE_ID: ${{ github.event.inputs.file_id }}
         run: |
-          curl -X POST ${{ github.event.inputs.webhook_url }} \
+          curl -X POST "$WEBHOOK_URL" \
           -H "Content-Type: application/json" \
           -d '{
             "status": "error", 
             "message": "Fallo tecnico en el procesamiento. Revisar logs de GitHub Actions.",
-            "file_id": "${{ github.event.inputs.file_id }}"
+            "file_id": "'"$FILE_ID"'"
           }'
